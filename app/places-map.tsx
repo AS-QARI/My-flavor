@@ -25,21 +25,41 @@ export default function PlacesMap({
     selectRef = useRef(onSelect);
   const [ready, setReady] = useState(false),
     [error, setError] = useState(''),
-    [locating, setLocating] = useState(false);
+    [locating, setLocating] = useState(false),
+    [currentPosition, setCurrentPosition] = useState<[number, number] | null>(
+      position ?? null,
+    );
   pickRef.current = onPick;
   selectRef.current = onSelect;
   useEffect(() => {
     let active = true;
     let observer: ResizeObserver | undefined;
+    let resizeFrame = 0;
+    const refreshMapSize = () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => map.current?.invalidateSize());
+    };
+    const reportOffline = () =>
+      setError('لا يوجد اتصال بالإنترنت. ستظهر الخريطة عند عودة الاتصال.');
+    const clearOfflineError = () => setError('');
     import('leaflet')
       .then((lib) => {
         if (!active || !container.current) return;
         L.current = lib;
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         const m = lib
           .map(container.current, {
             zoomControl: false,
             scrollWheelZoom: false,
             attributionControl: true,
+            dragging: true,
+            touchZoom: true,
+            keyboard: true,
+            preferCanvas: true,
+            worldCopyJump: true,
+            zoomAnimation: !isIOS,
+            fadeAnimation: !isIOS,
+            markerZoomAnimation: !isIOS,
           })
           .setView(position ?? picked ?? [24.705, 46.683], 13);
         map.current = m;
@@ -47,7 +67,11 @@ export default function PlacesMap({
           .tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            minZoom: 3,
             maxZoom: 19,
+            maxNativeZoom: 19,
+            updateWhenIdle: isIOS,
+            keepBuffer: 2,
           })
           .on('tileerror', () =>
             setError('تعذّر تحميل بعض أجزاء الخريطة. تحقق من اتصالك.'),
@@ -57,14 +81,32 @@ export default function PlacesMap({
         m.on('click', (event: Leaflet.LeafletMouseEvent) =>
           pickRef.current?.([event.latlng.lat, event.latlng.lng]),
         );
-        observer = new ResizeObserver(() => m.invalidateSize());
+        observer = new ResizeObserver(refreshMapSize);
         observer.observe(container.current);
-        setReady(true);
+        window.addEventListener('resize', refreshMapSize, { passive: true });
+        window.addEventListener('orientationchange', refreshMapSize, {
+          passive: true,
+        });
+        window.visualViewport?.addEventListener('resize', refreshMapSize, {
+          passive: true,
+        });
+        window.addEventListener('offline', reportOffline);
+        window.addEventListener('online', clearOfflineError);
+        m.whenReady(() => {
+          refreshMapSize();
+          setReady(true);
+        });
       })
       .catch(() => setError('تعذّر تحميل الخريطة. أعد تحميل الصفحة.'));
     return () => {
       active = false;
+      cancelAnimationFrame(resizeFrame);
       observer?.disconnect();
+      window.removeEventListener('resize', refreshMapSize);
+      window.removeEventListener('orientationchange', refreshMapSize);
+      window.visualViewport?.removeEventListener('resize', refreshMapSize);
+      window.removeEventListener('offline', reportOffline);
+      window.removeEventListener('online', clearOfflineError);
       map.current?.remove();
       map.current = null;
     };
@@ -100,20 +142,24 @@ export default function PlacesMap({
           }),
         })
         .addTo(layer.current);
-    if (position)
+    if (currentPosition)
       lib
-        .circleMarker(position, {
-          radius: 8,
-          color: '#fff',
-          weight: 3,
-          fillColor: '#3b786f',
+        .circleMarker(currentPosition, {
+          radius: 9,
+          color: '#0c0f0d',
+          weight: 4,
+          fillColor: '#7cc6b4',
           fillOpacity: 1,
         })
+        .bindTooltip('موقعك الحالي', { direction: 'top' })
         .addTo(layer.current);
-  }, [entries, ready, picked, position]);
+  }, [entries, ready, picked, currentPosition]);
   useEffect(() => {
-    if (ready && position) map.current?.setView(position, 15);
-  }, [ready, position]);
+    if (position) setCurrentPosition(position);
+  }, [position]);
+  useEffect(() => {
+    if (ready && currentPosition) map.current?.setView(currentPosition, 15);
+  }, [ready, currentPosition]);
   useEffect(() => {
     if (!ready || !map.current || !L.current || picked) return;
     if (entries.length)
@@ -136,19 +182,9 @@ export default function PlacesMap({
           p.coords.latitude,
           p.coords.longitude,
         ];
+        setCurrentPosition(latlng);
         map.current?.setView(latlng, 15);
         if (pickRef.current) pickRef.current(latlng);
-        else if (L.current && map.current)
-          L.current
-            .circleMarker(latlng, {
-              radius: 8,
-              color: '#fff',
-              weight: 3,
-              fillColor: '#3b786f',
-              fillOpacity: 1,
-            })
-            .bindTooltip('أنت هنا')
-            .addTo(map.current);
       },
       (e) => {
         setLocating(false);
@@ -170,6 +206,7 @@ export default function PlacesMap({
         aria-label={
           onPick ? 'اضغط على الخريطة لتحديد المطعم' : 'خريطة المطاعم التي زرتها'
         }
+        aria-describedby="map-touch-help"
       />
       {!ready && (
         <div className="map-loading">
@@ -208,6 +245,9 @@ export default function PlacesMap({
         </div>
       </div>
       {onPick && <div className="pick-hint">اضغط لتثبيت موقع المطعم</div>}
+      <div id="map-touch-help" className="map-touch-hint">
+        اسحب للتنقّل · قرّب بإصبعين
+      </div>
       {error && (
         <div className="map-error" role="status">
           {error}

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Camera,
   Check,
@@ -69,13 +69,32 @@ export default function EntryEditor({
     [dirty, setDirty] = useState(false),
     [discard, setDiscard] = useState(false),
     [error, setError] = useState(''),
-    [progress, setProgress] = useState('');
+    [progress, setProgress] = useState(''),
+    [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const urls = useRef<string[]>([]),
     uploaded = useRef(new Map<File, string>());
   useEffect(
     () => () => urls.current.forEach((url) => URL.revokeObjectURL(url)),
     [],
   );
+  useEffect(() => {
+    const updateViewportHeight = () =>
+      setViewportHeight(window.visualViewport?.height ?? window.innerHeight);
+    updateViewportHeight();
+    window.visualViewport?.addEventListener('resize', updateViewportHeight, {
+      passive: true,
+    });
+    window.addEventListener('orientationchange', updateViewportHeight, {
+      passive: true,
+    });
+    return () => {
+      window.visualViewport?.removeEventListener(
+        'resize',
+        updateViewportHeight,
+      );
+      window.removeEventListener('orientationchange', updateViewportHeight);
+    };
+  }, []);
   function close() {
     if (saving) return;
     if (dirty) setDiscard(true);
@@ -182,10 +201,17 @@ export default function EntryEditor({
           className="editor-dialog"
           showCloseButton={false}
           initialFocus={false}
+          style={
+            {
+              '--visual-viewport-height': viewportHeight
+                ? `${viewportHeight}px`
+                : '94dvh',
+            } as CSSProperties
+          }
         >
           <div className="modal-heading">
             <div>
-              <span className="eyebrow">صفحة في دفتر مذاق</span>
+              <span className="eyebrow">صفحة في دفتر ذائقتي</span>
               <DialogTitle className="modal-title">
                 {entry ? 'تفاصيل الذكرى' : 'ذكرى جديدة'}
               </DialogTitle>

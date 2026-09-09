@@ -8,10 +8,14 @@ const arabic = Noto_Sans_Arabic({
   display: 'swap',
 });
 export const metadata: Metadata = {
-  title: 'مذاق | دفتر تجاربي',
+  title: 'ذائقتي | دفتر المطاعم',
   description: 'أماكن زرتها، وأطباق أحببتها. دفتر خاص لذكرياتك مع المطاعم.',
-  applicationName: 'مذاق',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'مذاق' },
+  applicationName: 'ذائقتي',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'ذائقتي',
+  },
   manifest: '/manifest.webmanifest',
   icons: { icon: '/favicon.svg', apple: '/apple-touch-icon.png' },
 };
@@ -19,7 +23,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#f8f5ef',
+  themeColor: '#0c0f0d',
 };
 export default function RootLayout({
   children,

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Map as MapIcon,
@@ -17,6 +17,9 @@ import {
   CalendarDays,
   LoaderCircle,
   RefreshCw,
+  Search,
+  Images,
+  Sparkles,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -36,6 +39,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Toaster, toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { EXAMPLES, dateLabel, type Entry } from '@/lib/entries';
 import PlacesMap from './places-map';
 import EntryEditor from './entry-editor';
@@ -49,10 +53,34 @@ export default function Journal() {
     [editor, setEditor] = useState<{ entry?: Entry } | null>(null),
     [deleteOpen, setDeleteOpen] = useState(false),
     [deleting, setDeleting] = useState(false),
-    [lightbox, setLightbox] = useState<string | null>(null);
+    [lightbox, setLightbox] = useState<string | null>(null),
+    [search, setSearch] = useState(''),
+    [filter, setFilter] = useState<'all' | 'rated' | 'unrated'>('all');
   const isExample =
     saved.length === 0 && showExamples && !loading && !loadError;
   const entries = isExample ? EXAMPLES : saved;
+  const filteredEntries = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ar');
+    return entries.filter((entry) => {
+      const matchesFilter =
+        filter === 'all' ||
+        (filter === 'rated' && entry.rating > 0) ||
+        (filter === 'unrated' && entry.rating === 0);
+      const searchable = [entry.name, entry.area, entry.category, entry.notes]
+        .join(' ')
+        .toLocaleLowerCase('ar');
+      return matchesFilter && (!query || searchable.includes(query));
+    });
+  }, [entries, filter, search]);
+  const ratedEntries = entries.filter((entry) => entry.rating > 0);
+  const averageRating = ratedEntries.length
+    ? ratedEntries.reduce((total, entry) => total + entry.rating, 0) /
+      ratedEntries.length
+    : 0;
+  const photoCount = entries.reduce(
+    (total, entry) => total + entry.photos.length,
+    0,
+  );
   async function refresh() {
     setLoading(true);
     setLoadError('');
@@ -116,12 +144,12 @@ export default function Journal() {
     <Toaster>
       <div className="app-shell">
         <header className="app-header">
-          <a href="/" className="brand" aria-label="مذاق، الصفحة الرئيسية">
+          <a href="/" className="brand" aria-label="ذائقتي، الصفحة الرئيسية">
             <span className="brand-mark">
               <Utensils size={23} />
             </span>
             <span>
-              مَذاق<span className="brand-sub">دفتر تجاربي</span>
+              ذائقتي<span className="brand-sub">دفتر المطاعم</span>
             </span>
           </a>
           <span className="private-tag">
@@ -137,14 +165,12 @@ export default function Journal() {
           <main className="main-content">
             <section className="page-heading">
               <div>
-                <span className="eyebrow">على مهل… وبذائقتك</span>
-                <h1>
-                  {tab === 'map' ? 'لكل مكان، حكاية.' : 'صفحات من ذائقتي.'}
-                </h1>
+                <span className="eyebrow">ذكرياتك، مرتبة على الخريطة</span>
+                <h1>{tab === 'map' ? 'أماكن تستحق التذكّر.' : 'كل تجاربي.'}</h1>
                 <p>
                   {tab === 'map'
-                    ? 'أثر الأماكن الحلوة يبقى هنا.'
-                    : 'كل التجارب، بكل تفاصيلها.'}
+                    ? 'خريطتك الخاصة للأطباق واللحظات الجميلة.'
+                    : 'ابحث عن أي مطعم، ذكرى، أو طبق كتبته.'}
                 </p>
               </div>
               <button
@@ -165,6 +191,37 @@ export default function Journal() {
               </div>
             )}
             <TabsContent value="map">
+              <div className="overview-strip" aria-label="ملخص الدفتر">
+                <div>
+                  <span className="overview-icon">
+                    <MapPin size={18} />
+                  </span>
+                  <p>
+                    <strong>{entries.length}</strong>
+                    <span>أماكن محفوظة</span>
+                  </p>
+                </div>
+                <div>
+                  <span className="overview-icon gold">
+                    <Star size={18} fill="currentColor" />
+                  </span>
+                  <p>
+                    <strong>
+                      {averageRating ? averageRating.toFixed(1) : '—'}
+                    </strong>
+                    <span>متوسط تقييمك</span>
+                  </p>
+                </div>
+                <div>
+                  <span className="overview-icon olive">
+                    <Images size={18} />
+                  </span>
+                  <p>
+                    <strong>{photoCount}</strong>
+                    <span>صور وذكريات</span>
+                  </p>
+                </div>
+              </div>
               <div className="journal-layout">
                 <section className="map-section">
                   <div className="section-title">
@@ -263,13 +320,44 @@ export default function Journal() {
                   </button>
                 </div>
               )}
+              <div className="journal-toolbar">
+                <label className="search-control">
+                  <Search size={19} aria-hidden="true" />
+                  <span className="sr-only">ابحث في تجاربك</span>
+                  <Input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="ابحث باسم المطعم أو الحي…"
+                    enterKeyHint="search"
+                  />
+                </label>
+                <div className="filter-chips" aria-label="تصفية التجارب">
+                  {(
+                    [
+                      ['all', 'الكل'],
+                      ['rated', 'قيّمتها'],
+                      ['unrated', 'بانتظار التقييم'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={filter === value ? 'active' : ''}
+                      aria-pressed={filter === value}
+                      onClick={() => setFilter(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {loading ? (
                 <div className="loading-memories">
                   <Skeleton className="loading-image" />
                 </div>
               ) : (
                 <div className="all-memories memory-grid">
-                  {entries.map((e) => (
+                  {filteredEntries.map((e) => (
                     <MemoryCard
                       key={e.id}
                       entry={e}
@@ -281,9 +369,26 @@ export default function Journal() {
               {!loading && !entries.length && !loadError && (
                 <EmptyState onAdd={() => setEditor({})} />
               )}
+              {!loading &&
+                entries.length > 0 &&
+                filteredEntries.length === 0 && (
+                  <div className="search-empty">
+                    <Sparkles size={28} />
+                    <h2>لم أجد ذكرى مطابقة</h2>
+                    <p>جرّب كلمة أخرى أو اعرض كل التجارب.</p>
+                    <button
+                      onClick={() => {
+                        setSearch('');
+                        setFilter('all');
+                      }}
+                    >
+                      مسح البحث
+                    </button>
+                  </div>
+                )}
             </TabsContent>
             <footer className="desktop-footer">
-              <span>مذاق — أماكن، أطباق، وذكريات.</span>
+              <span>ذائقتي — أماكن، أطباق، وذكريات.</span>
               <span>
                 <LockKeyhole size={12} />
                 دفترك الخاص، لك وحدك
