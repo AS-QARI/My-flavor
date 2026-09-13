@@ -1,7 +1,15 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useId } from 'react';
 import type { Entry } from '@/lib/entries';
-import { LocateFixed, Plus, Minus, LoaderCircle } from 'lucide-react';
+import {
+  LocateFixed,
+  Plus,
+  Minus,
+  LoaderCircle,
+  MapPinned,
+  Maximize,
+  Minimize,
+} from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 export default function PlacesMap({
@@ -17,6 +25,10 @@ export default function PlacesMap({
   picked?: [number, number] | null;
   position?: [number, number] | null;
 }) {
+  const helpId = useId();
+  const wrap = useRef<HTMLDivElement>(null);
+  const tileLayer = useRef<Leaflet.TileLayer | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const container = useRef<HTMLDivElement>(null),
     map = useRef<Leaflet.Map | null>(null),
     L = useRef<typeof Leaflet | null>(null),
@@ -33,7 +45,6 @@ export default function PlacesMap({
   selectRef.current = onSelect;
   useEffect(() => {
     let active = true;
-    let observer: ResizeObserver | undefined;
     let resizeFrame = 0;
     const refreshMapSize = () => {
       cancelAnimationFrame(resizeFrame);
@@ -41,7 +52,10 @@ export default function PlacesMap({
     };
     const reportOffline = () =>
       setError('لا يوجد اتصال بالإنترنت. ستظهر الخريطة عند عودة الاتصال.');
-    const clearOfflineError = () => setError('');
+    const clearOfflineError = () => {
+      setError('');
+      tileLayer.current?.redraw();
+    };
     import('leaflet')
       .then((lib) => {
         if (!active || !container.current) return;
@@ -57,13 +71,13 @@ export default function PlacesMap({
             keyboard: true,
             preferCanvas: true,
             worldCopyJump: true,
-            zoomAnimation: !isIOS,
+            zoomAnimation: false,
             fadeAnimation: !isIOS,
-            markerZoomAnimation: !isIOS,
+            markerZoomAnimation: false,
           })
           .setView(position ?? picked ?? [24.705, 46.683], 13);
         map.current = m;
-        lib
+        tileLayer.current = lib
           .tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -79,10 +93,11 @@ export default function PlacesMap({
           .addTo(m);
         layer.current = lib.layerGroup().addTo(m);
         m.on('click', (event: Leaflet.LeafletMouseEvent) =>
-          pickRef.current?.([event.latlng.lat, event.latlng.lng]),
+          pickRef.current?.([
+            Math.max(-85, Math.min(85, event.latlng.lat)),
+            event.latlng.wrap().lng,
+          ]),
         );
-        observer = new ResizeObserver(refreshMapSize);
-        observer.observe(container.current);
         window.addEventListener('resize', refreshMapSize, { passive: true });
         window.addEventListener('orientationchange', refreshMapSize, {
           passive: true,
@@ -101,12 +116,12 @@ export default function PlacesMap({
     return () => {
       active = false;
       cancelAnimationFrame(resizeFrame);
-      observer?.disconnect();
       window.removeEventListener('resize', refreshMapSize);
       window.removeEventListener('orientationchange', refreshMapSize);
       window.visualViewport?.removeEventListener('resize', refreshMapSize);
       window.removeEventListener('offline', reportOffline);
       window.removeEventListener('online', clearOfflineError);
+      map.current?.stop();
       map.current?.remove();
       map.current = null;
     };
@@ -128,18 +143,33 @@ export default function PlacesMap({
           title: e.name,
           alt: e.name,
         })
+        .bindTooltip(
+          Object.assign(document.createElement('span'), {
+            textContent: e.name,
+          }),
+          { direction: 'top', offset: [0, -40] },
+        )
         .on('click', () => selectRef.current?.(e))
         .addTo(layer.current!);
     });
     if (picked)
       lib
         .marker(picked, {
+          draggable: true,
+          title: 'اسحب لتعديل موقع المطعم',
           icon: lib.divIcon({
             html: '<span class="place-pin"><span>＋</span></span>',
             className: 'custom-marker',
             iconSize: [48, 48],
             iconAnchor: [24, 48],
           }),
+        })
+        .on('dragend', (event) => {
+          const point = (event.target as Leaflet.Marker).getLatLng().wrap();
+          pickRef.current?.([
+            Math.max(-85, Math.min(85, point.lat)),
+            point.lng,
+          ]);
         })
         .addTo(layer.current);
     if (currentPosition)
@@ -155,6 +185,10 @@ export default function PlacesMap({
         .addTo(layer.current);
   }, [entries, ready, picked, currentPosition]);
   useEffect(() => {
+    if (ready && picked)
+      map.current?.setView(picked, Math.max(map.current.getZoom(), 15));
+  }, [ready, picked]);
+  useEffect(() => {
     if (position) setCurrentPosition(position);
   }, [position]);
   useEffect(() => {
@@ -168,6 +202,27 @@ export default function PlacesMap({
         { padding: [60, 65], maxZoom: 14 },
       );
   }, [ready, entries, picked]);
+  function fitPlaces() {
+    if (!map.current || !L.current) return;
+    if (entries.length)
+      map.current.fitBounds(
+        L.current.latLngBounds(entries.map((e) => [e.lat, e.lng])),
+        { padding: [60, 65], maxZoom: 15 },
+      );
+    else if (picked) map.current.setView(picked, 15);
+    else map.current.setView([24.705, 46.683], 13);
+  }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => map.current?.invalidateSize());
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    if (expanded) window.addEventListener('keydown', escape);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [expanded]);
   function locate() {
     if (!navigator.geolocation) {
       setError('المتصفح لا يدعم تحديد الموقع.');
@@ -198,7 +253,14 @@ export default function PlacesMap({
     );
   }
   return (
-    <div className={'map-wrap ' + (onPick ? 'picker-map' : '')}>
+    <div
+      ref={wrap}
+      className={
+        'map-wrap ' +
+        (onPick ? 'picker-map ' : '') +
+        (expanded ? 'expanded-map' : '')
+      }
+    >
       <div
         className="leaflet-map"
         ref={container}
@@ -206,7 +268,7 @@ export default function PlacesMap({
         aria-label={
           onPick ? 'اضغط على الخريطة لتحديد المطعم' : 'خريطة المطاعم التي زرتها'
         }
-        aria-describedby="map-touch-help"
+        aria-describedby={helpId}
       />
       {!ready && (
         <div className="map-loading">
@@ -215,6 +277,24 @@ export default function PlacesMap({
         </div>
       )}
       <div className="map-controls">
+        <button
+          type="button"
+          onClick={fitPlaces}
+          aria-label="عرض كل المطاعم"
+          title="عرض كل المطاعم"
+        >
+          <MapPinned size={20} />
+        </button>
+        {!onPick && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? 'تصغير عرض الخريطة' : 'توسيع الخريطة'}
+            title={expanded ? 'تصغير عرض الخريطة' : 'توسيع الخريطة'}
+          >
+            {expanded ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
+        )}
         <button
           type="button"
           onClick={locate}
@@ -244,8 +324,23 @@ export default function PlacesMap({
           </button>
         </div>
       </div>
-      {onPick && <div className="pick-hint">اضغط لتثبيت موقع المطعم</div>}
-      <div id="map-touch-help" className="map-touch-hint">
+      {onPick && (
+        <button
+          type="button"
+          className="pick-hint"
+          onClick={() => {
+            const point = map.current?.getCenter().wrap();
+            if (point)
+              pickRef.current?.([
+                Math.max(-85, Math.min(85, point.lat)),
+                point.lng,
+              ]);
+          }}
+        >
+          اختيار وسط الخريطة
+        </button>
+      )}
+      <div id={helpId} className="map-touch-hint">
         اسحب للتنقّل · قرّب بإصبعين
       </div>
       {error && (

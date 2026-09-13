@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return json({ error: 'هذه التجربة غير متاحة.' }, 404);
     await database()
       .prepare(
-        'INSERT INTO entries (id,owner_id,name,area,category,date,rating,notes,lat,lng,photos,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,area=excluded.area,category=excluded.category,date=excluded.date,rating=excluded.rating,notes=excluded.notes,lat=excluded.lat,lng=excluded.lng,photos=excluded.photos WHERE entries.owner_id=excluded.owner_id',
+        'INSERT INTO entries (id,owner_id,name,area,category,date,rating,notes,lat,lng,photos,created_at,google_maps_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,area=excluded.area,category=excluded.category,date=excluded.date,rating=excluded.rating,notes=excluded.notes,lat=excluded.lat,lng=excluded.lng,photos=excluded.photos,google_maps_url=excluded.google_maps_url WHERE entries.owner_id=excluded.owner_id',
       )
       .bind(
         d.id,
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
         d.lng,
         JSON.stringify(d.photos),
         new Date().toISOString(),
+        d.googleMapsUrl,
       )
       .run();
     return json({

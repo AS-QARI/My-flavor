@@ -15,11 +15,12 @@ import {
   Pencil,
   Trash2,
   CalendarDays,
-  LoaderCircle,
   RefreshCw,
   Search,
   Images,
   Sparkles,
+  Navigation,
+  ExternalLink,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -43,12 +44,14 @@ import { Input } from '@/components/ui/input';
 import { EXAMPLES, dateLabel, type Entry } from '@/lib/entries';
 import PlacesMap from './places-map';
 import EntryEditor from './entry-editor';
+import ThemeToggle from './theme-toggle';
+import { mapsDirections, mapsPlace, mapsSearch } from '@/lib/google-maps';
 export default function Journal() {
   const [tab, setTab] = useState('map'),
     [saved, setSaved] = useState<Entry[]>([]),
     [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState(''),
-    [showExamples, setShowExamples] = useState(true),
+    [showExamples, setShowExamples] = useState(false),
     [selected, setSelected] = useState<Entry | null>(null),
     [editor, setEditor] = useState<{ entry?: Entry } | null>(null),
     [deleteOpen, setDeleteOpen] = useState(false),
@@ -111,8 +114,10 @@ export default function Journal() {
     setShowExamples(false);
     setEditor(null);
     setSelected(null);
+    setSearch('');
+    setFilter('all');
     toast.add({
-      title: 'انضمّت الذكرى إلى دفترك',
+      title: 'تم حفظ التجربة',
       description: 'تم حفظ التفاصيل والصور.',
       type: 'success',
     });
@@ -152,10 +157,13 @@ export default function Journal() {
               ذائقتي<span className="brand-sub">دفتر المطاعم</span>
             </span>
           </a>
-          <span className="private-tag">
-            <LockKeyhole size={14} />
-            مساحة تخصّك
-          </span>
+          <div className="header-actions">
+            <ThemeToggle />
+            <span className="private-tag">
+              <LockKeyhole size={14} />
+              مساحة تخصّك
+            </span>
+          </div>
         </header>
         <Tabs
           value={tab}
@@ -165,12 +173,13 @@ export default function Journal() {
           <main className="main-content">
             <section className="page-heading">
               <div>
-                <span className="eyebrow">ذكرياتك، مرتبة على الخريطة</span>
-                <h1>{tab === 'map' ? 'أماكن تستحق التذكّر.' : 'كل تجاربي.'}</h1>
+                <h1>
+                  {tab === 'map' ? 'مطاعمك على الخريطة' : 'تجاربك في مكان واحد'}
+                </h1>
                 <p>
                   {tab === 'map'
-                    ? 'خريطتك الخاصة للأطباق واللحظات الجميلة.'
-                    : 'ابحث عن أي مطعم، ذكرى، أو طبق كتبته.'}
+                    ? 'احفظ مطعمًا، قيّمه، وارجع له بسهولة.'
+                    : 'ابحث عن مطعم أو طبق أو ملاحظة كتبتها.'}
                 </p>
               </div>
               <button
@@ -178,7 +187,7 @@ export default function Journal() {
                 onClick={() => setEditor({})}
               >
                 <Plus size={20} />
-                تجربة جديدة
+                أضف مطعمًا
               </button>
             </section>
             {loadError && (
@@ -190,6 +199,37 @@ export default function Journal() {
                 </button>
               </div>
             )}
+            <div className="journal-toolbar">
+              <label className="search-control">
+                <Search size={19} aria-hidden="true" />
+                <span className="sr-only">ابحث في تجاربك</span>
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="ابحث باسم المطعم أو الحي أو الطبق…"
+                  enterKeyHint="search"
+                />
+              </label>
+              <div className="filter-chips" aria-label="تصفية التجارب">
+                {(
+                  [
+                    ['all', 'الكل'],
+                    ['rated', 'قيّمتها'],
+                    ['unrated', 'بانتظار التقييم'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={filter === value ? 'active' : ''}
+                    aria-pressed={filter === value}
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <TabsContent value="map">
               <div className="overview-strip" aria-label="ملخص الدفتر">
                 <div>
@@ -227,13 +267,34 @@ export default function Journal() {
                   <div className="section-title">
                     <h2>
                       <MapPin size={19} />
-                      خريطة ذكرياتي
+                      خريطة المطاعم
                     </h2>
                     <span className="mini-label">
                       {isExample ? 'معاينة الدفتر' : `${saved.length} تجربة`}
                     </span>
                   </div>
-                  <PlacesMap entries={entries} onSelect={setSelected} />
+                  <PlacesMap entries={filteredEntries} onSelect={setSelected} />
+                  <div className="map-actions-row">
+                    <a
+                      className="google-text-link"
+                      href={mapsSearch(search.trim() || 'مطاعم بالقرب مني')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink size={17} />
+                      {search.trim()
+                        ? 'ابحث في قوقل ماب'
+                        : 'اكتشف مطاعم في قوقل ماب'}
+                    </a>
+                    <span aria-live="polite">
+                      {filteredEntries.length} من {entries.length} مطاعم
+                    </span>
+                  </div>
+                  {(search || filter !== 'all') && !filteredEntries.length && (
+                    <p className="map-no-results" role="status">
+                      لا توجد مطاعم مطابقة. غيّر البحث أو التصفية.
+                    </p>
+                  )}
                   <div className="map-caption">
                     <span>
                       <i className="legend-dot" />
@@ -243,12 +304,18 @@ export default function Journal() {
                       <i className="legend-dot unrated" />
                       بانتظار تقييمي
                     </span>
-                    <span className="caption-end">كل علامة، ذكرى</span>
+                    <span className="caption-end">
+                      اضغط العلامة لعرض التفاصيل
+                    </span>
                   </div>
                 </section>
                 <section className="recent-section">
                   <div className="section-title">
-                    <h2>من صفحات الدفتر</h2>
+                    <h2>
+                      {search || filter !== 'all'
+                        ? 'نتائج البحث'
+                        : 'آخر تجاربك'}
+                    </h2>
                     <button
                       className="text-button"
                       onClick={() => switchTab('journal')}
@@ -268,7 +335,7 @@ export default function Journal() {
                     </div>
                   ) : (
                     <div className="memory-grid">
-                      {entries.slice(0, 3).map((e) => (
+                      {filteredEntries.slice(0, 3).map((e) => (
                         <MemoryCard
                           key={e.id}
                           entry={e}
@@ -320,37 +387,6 @@ export default function Journal() {
                   </button>
                 </div>
               )}
-              <div className="journal-toolbar">
-                <label className="search-control">
-                  <Search size={19} aria-hidden="true" />
-                  <span className="sr-only">ابحث في تجاربك</span>
-                  <Input
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="ابحث باسم المطعم أو الحي…"
-                    enterKeyHint="search"
-                  />
-                </label>
-                <div className="filter-chips" aria-label="تصفية التجارب">
-                  {(
-                    [
-                      ['all', 'الكل'],
-                      ['rated', 'قيّمتها'],
-                      ['unrated', 'بانتظار التقييم'],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={filter === value ? 'active' : ''}
-                      aria-pressed={filter === value}
-                      onClick={() => setFilter(value)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
               {loading ? (
                 <div className="loading-memories">
                   <Skeleton className="loading-image" />
@@ -499,6 +535,28 @@ export default function Journal() {
                     <span className="quote-mark">“</span>
                     <p>{selected.notes || 'لم أكتب تفاصيل هذه الذكرى بعد.'}</p>
                   </div>
+                  {!selected.demo && (
+                    <div className="google-detail-actions">
+                      <a
+                        className="primary-button"
+                        href={mapsDirections(selected)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Navigation size={18} />
+                        الاتجاهات في قوقل ماب
+                      </a>
+                      <a
+                        className="secondary-button"
+                        href={mapsPlace(selected)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink size={17} />
+                        عرض المكان
+                      </a>
+                    </div>
+                  )}
                   {selected.demo ? (
                     <button
                       className="primary-button detail-add"
@@ -521,7 +579,7 @@ export default function Journal() {
                         }}
                       >
                         <Pencil size={17} />
-                        تعديل الذكرى
+                        تعديل التجربة
                       </button>
                       <button
                         className="delete-button"

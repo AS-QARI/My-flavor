@@ -1,0 +1,1 @@
+ALTER TABLE `entries` ADD `google_maps_url` text DEFAULT '' NOT NULL;

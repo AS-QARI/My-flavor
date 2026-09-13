@@ -8,6 +8,8 @@ import {
   Star,
   X,
   Plus,
+  ExternalLink,
+  Link2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -34,6 +36,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { today, type Entry } from '@/lib/entries';
 import PlacesMap from './places-map';
+import { mapsSearch, mapsPlace } from '@/lib/google-maps';
 const categories = [
   'مطعم',
   'إيطالي',
@@ -60,6 +63,10 @@ export default function EntryEditor({
     [date, setDate] = useState(entry?.date ?? today()),
     [rating, setRating] = useState(entry?.rating ?? 0),
     [notes, setNotes] = useState(entry?.notes ?? ''),
+    [googleMapsUrl, setGoogleMapsUrl] = useState(entry?.googleMapsUrl ?? ''),
+    [mapLink, setMapLink] = useState(entry?.googleMapsUrl ?? ''),
+    [resolving, setResolving] = useState(false),
+    [mapMessage, setMapMessage] = useState(''),
     [picked, setPicked] = useState<[number, number] | null>(
       entry ? [entry.lat, entry.lng] : null,
     );
@@ -102,7 +109,40 @@ export default function EntryEditor({
   }
   function pick(p: [number, number]) {
     setPicked(p);
+    setGoogleMapsUrl('');
+    setMapMessage('');
     setDirty(true);
+  }
+  async function importPlace() {
+    setResolving(true);
+    setMapMessage('');
+    try {
+      const response = await fetch('/api/maps/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: mapLink.trim() }),
+      });
+      const data = (await response.json()) as {
+        position: [number, number];
+        url: string;
+        name: string;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error || 'تعذّر قراءة الموقع.');
+      setPicked(data.position);
+      setGoogleMapsUrl(data.url);
+      if (data.name && !name.trim()) setName(data.name);
+      setDirty(true);
+      setMapMessage(
+        'تم جلب الموقع. تأكد من الدبوس واسم المطعم ثم احفظ تجربتك.',
+      );
+    } catch (error) {
+      setMapMessage(
+        error instanceof Error ? error.message : 'تعذّر الاتصال. حاول مجددًا.',
+      );
+    } finally {
+      setResolving(false);
+    }
   }
   function addPhotos(files: FileList | null) {
     if (!files) return;
@@ -175,6 +215,7 @@ export default function EntryEditor({
           lat: picked[0],
           lng: picked[1],
           photos: savedPhotos,
+          googleMapsUrl,
         }),
       });
       const data = (await res.json()) as { error?: string; entry: Entry };
@@ -211,12 +252,12 @@ export default function EntryEditor({
         >
           <div className="modal-heading">
             <div>
-              <span className="eyebrow">صفحة في دفتر ذائقتي</span>
+              <span className="eyebrow">ذائقتي</span>
               <DialogTitle className="modal-title">
-                {entry ? 'تفاصيل الذكرى' : 'ذكرى جديدة'}
+                {entry ? 'تعديل التجربة' : 'أضف مطعمًا'}
               </DialogTitle>
               <DialogDescription className="modal-description">
-                احفظ الطعم، والمكان، والشعور.
+                حدد المكان وأضف تقييمك. الصور والملاحظات اختيارية.
               </DialogDescription>
             </div>
             <button
@@ -235,7 +276,60 @@ export default function EntryEditor({
           >
             <fieldset disabled={saving} className="form-fields">
               <div className="form-section-label">
-                <span>٠١</span>المكان واللحظة
+                <span>١</span>المطعم وموقعه
+              </div>
+              <div className="google-import">
+                <label className="field-label" htmlFor="google-link">
+                  <Link2 size={17} /> رابط قوقل ماب <small>اختياري</small>
+                </label>
+                <p>من قوقل ماب: افتح المطعم ← مشاركة ← نسخ الرابط.</p>
+                <div className="import-row">
+                  <Input
+                    id="google-link"
+                    className="form-input"
+                    value={mapLink}
+                    onChange={(e) => {
+                      setMapLink(e.target.value);
+                      setMapMessage('');
+                    }}
+                    placeholder="https://maps.app.goo.gl/…"
+                    dir="ltr"
+                    type="url"
+                    maxLength={4096}
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={importPlace}
+                    disabled={resolving || !mapLink.trim()}
+                  >
+                    {resolving ? (
+                      <LoaderCircle size={18} className="spin" />
+                    ) : (
+                      <MapPin size={18} />
+                    )}
+                    <span>{resolving ? 'جارٍ الجلب' : 'جلب الموقع'}</span>
+                  </button>
+                </div>
+                {mapMessage && (
+                  <p className="import-message" role="status">
+                    {mapMessage}
+                  </p>
+                )}
+                <a
+                  className="google-text-link"
+                  href={mapsSearch(
+                    [name, area].filter(Boolean).join(' ') ||
+                      'مطاعم بالقرب مني',
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink size={15} />
+                  {name
+                    ? 'ابحث عن المطعم في قوقل ماب'
+                    : 'افتح قوقل ماب لاختيار المطعم'}
+                </a>
               </div>
               <label className="field-label" htmlFor="restaurant-name">
                 اسم المطعم <span>*</span>
@@ -247,7 +341,7 @@ export default function EntryEditor({
                 maxLength={100}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="أين كانت التجربة؟"
+                placeholder="اسم المطعم أو المقهى"
                 autoComplete="off"
               />
               <div className="two-fields">
@@ -315,8 +409,24 @@ export default function EntryEditor({
               </div>
               <PlacesMap entries={[]} onPick={pick} picked={picked} />
               <p className="field-hint">
-                حرّك الخريطة واضغط على المكان، أو استخدم زر موقعي.
+                اضغط لتحديد المكان أو اسحب الدبوس لتعديله. زر موقعي ينقلك لمكانك
+                الحالي.
               </p>
+              {picked && (
+                <a
+                  className="google-text-link"
+                  href={mapsPlace({
+                    lat: picked[0],
+                    lng: picked[1],
+                    googleMapsUrl,
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink size={15} />
+                  تحقق من المكان في قوقل ماب
+                </a>
+              )}
               <details className="coordinate-details">
                 <summary>أدخل الإحداثيات يدويًا</summary>
                 <div className="two-fields" dir="ltr">
@@ -355,7 +465,7 @@ export default function EntryEditor({
                 </div>
               </details>
               <div className="form-section-label">
-                <span>٠٢</span>كيف كانت التجربة؟
+                <span>٢</span>تقييمك وملاحظاتك
               </div>
               <div
                 className="rating-picker"
@@ -406,7 +516,7 @@ export default function EntryEditor({
                 placeholder="الطبق الذي أحببته، الأجواء، أو لحظة صغيرة…"
               />
               <div className="form-section-label">
-                <span>٠٣</span>صور من اللحظة{' '}
+                <span>٣</span>صور التجربة{' '}
                 <small>{existing.length + photos.length} / 6</small>
               </div>
               <div className="upload-grid">
@@ -470,7 +580,7 @@ export default function EntryEditor({
               <button
                 type="submit"
                 className="primary-button save-button"
-                disabled={saving}
+                disabled={saving || resolving}
               >
                 {saving ? (
                   <LoaderCircle className="spin" size={19} />
@@ -478,11 +588,7 @@ export default function EntryEditor({
                   <Check size={20} />
                 )}
                 <span>
-                  {saving
-                    ? progress
-                    : entry
-                      ? 'حفظ التعديلات'
-                      : 'احفظ هذه الذكرى'}
+                  {saving ? progress : entry ? 'حفظ التعديلات' : 'حفظ المطعم'}
                 </span>
               </button>
             </div>

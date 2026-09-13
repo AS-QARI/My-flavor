@@ -8,6 +8,13 @@
       "when": 1788869104638,
       "tag": "0000_simple_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789290781846,
+      "tag": "0001_lazy_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

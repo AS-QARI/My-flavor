@@ -19,6 +19,7 @@ export const entries = sqliteTable(
     lat: real('lat').notNull(),
     lng: real('lng').notNull(),
     photos: text('photos').notNull().default('[]'),
+    googleMapsUrl: text('google_maps_url').notNull().default(''),
     createdAt: text('created_at').notNull(),
   },
   (t) => [index('idx_entries_owner_date').on(t.ownerId, t.date)],

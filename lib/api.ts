@@ -1,5 +1,6 @@
 import { getChatGPTUser } from '@/app/chatgpt-auth';
 import { database } from '@/db';
+import { googleMapsURL } from './google-maps';
 export async function identity(request: Request, write = false) {
   const user = await getChatGPTUser();
   if (!user)
@@ -32,9 +33,15 @@ export function failure(error: unknown) {
   );
 }
 export function parseRow(row: Record<string, unknown>) {
-  const { owner_id, created_at, ...rest } = row;
+  const {
+    owner_id: _ownerId,
+    created_at: _createdAt,
+    google_maps_url,
+    ...rest
+  } = row;
   return {
     ...rest,
+    googleMapsUrl: typeof google_maps_url === 'string' ? google_maps_url : '',
     photos: (JSON.parse(String(row.photos)) as string[]).map(
       (id) => '/api/photos/' + id,
     ),
@@ -59,6 +66,13 @@ export function validate(data: Record<string, unknown>) {
     date = str('date', 10, true),
     notes = str('notes', 5000);
   const { rating, lat, lng, id } = data;
+  const googleMapsUrl = data.googleMapsUrl ?? '';
+  if (
+    typeof googleMapsUrl !== 'string' ||
+    googleMapsUrl.length > 4096 ||
+    (googleMapsUrl && !googleMapsURL(googleMapsUrl))
+  )
+    throw json({ error: 'رابط قوقل ماب غير صالح.' }, 400);
   if (
     typeof id !== 'string' ||
     !/^[\w-]{10,80}$/.test(id) ||
@@ -93,6 +107,7 @@ export function validate(data: Record<string, unknown>) {
     });
   return {
     id,
+    googleMapsUrl,
     name,
     area,
     category,

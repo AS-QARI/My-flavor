@@ -9,6 +9,7 @@ export type Entry = {
   lat: number;
   lng: number;
   photos: string[];
+  googleMapsUrl?: string;
   demo?: boolean;
 };
 export const EXAMPLES: Entry[] = [
