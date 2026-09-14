@@ -37,7 +37,7 @@ npm test             # التحقق من قراءة روابط قوقل والإ
 - `drizzle/` — ترحيلات قاعدة البيانات.
 - `public/` — الصور والأيقونات وملف تثبيت التطبيق.
 - `public/fonts/` — الخط العربي محليًا مع ترخيصه، حتى يعمل بعد نقل مجلد المشروع.
-- `.openai/hosting.json` — إعدادات قاعدة البيانات وتخزين الصور والنشر الحالي.
+- `wrangler.jsonc` — إعدادات نشر Cloudflare Workers وربط قاعدة البيانات والصور.
 
 ## التخزين والخصوصية
 
@@ -49,14 +49,23 @@ npm test             # التحقق من قراءة روابط قوقل والإ
 
 يمكنك تعديل التصميم والميزات ثم تشغيل `npm run build` للتحقق. عند تعديل `db/schema.ts` شغّل `npm run db:generate` واحفظ ملفات الترحيل الجديدة داخل `drizzle/`.
 
-المشروع مهيأ للنشر عبر OpenAI Sites. ويمكن تكييفه لاحقًا لأي استضافة تدعم Cloudflare Workers وD1 وR2.
+المشروع مهيأ للنشر على Cloudflare Workers. بيانات المطاعم تبقى في D1، والصور في R2، وبيانات تسجيل الدخول تحفظ كأسرار في Cloudflare ولا تدخل GitHub.
 
-### تحديث قاعدة البيانات المحلية
+### النشر على Cloudflare Workers
 
-ترحيل `drizzle/0001_lazy_lord_hawal.sql` يضيف رابط قوقل ماب إلى التجربة، مع الحفاظ على السجلات السابقة. طُبّق على قاعدة التطوير الموجودة في هذا المجلد. تطبّق Sites ملفات الترحيل عند النشر. لأي نسخة محلية أقدم، وبعد البناء، طبّق هذا الملف مرة واحدة على مخزنها المحلي باستخدام:
+1. أنشئ قاعدة D1 باسم `dhaiqati-db` ومساحة R2 باسم `dhaiqati-files` من لوحة Cloudflare.
+2. انسخ **Database ID** لقاعدة D1 وضعه بدل `REPLACE_WITH_YOUR_D1_DATABASE_ID` في `wrangler.jsonc`، ثم ارفع التعديل إلى GitHub.
+3. في Workers & Pages أنشئ Worker من مستودع GitHub. اجعل أمر البناء `npm run build` وأمر النشر `npx wrangler deploy`.
+4. من Worker > Settings > Variables and Secrets، أضف أسرار النصوص التالية: `ADMIN_USERNAME` و`ADMIN_PASSWORD` و`SESSION_SECRET`. يجب أن يكون `SESSION_SECRET` عشوائيًا وبطول 32 حرفًا على الأقل.
+5. بعد أول بناء ناجح، طبّق الترحيلات من جهازك بعد تسجيل دخول Wrangler:
 
 ```bash
-npx wrangler d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_lazy_lord_hawal.sql
+npx wrangler d1 execute dhaiqati-db --remote --file drizzle/0000_simple_moonstone.sql
+npx wrangler d1 execute dhaiqati-db --remote --file drizzle/0001_lazy_lord_hawal.sql
 ```
 
-عند تشغيل نسخة جديدة دون قاعدة محلية، طبّق أولًا `drizzle/0000_simple_moonstone.sql` بالطريقة نفسها. حافظ على `.wrangler/state` للاحتفاظ ببيانات التطوير والصور؛ بيانات الموقع المنشور منفصلة عنها.
+واجهة `/login` تحمي الدفتر. الجلسة موقعة ومخزنة في Cookie محمي؛ لا تضع اسم المستخدم أو كلمة المرور في الشيفرة أو في GitHub.
+
+### التشغيل محليًا
+
+انسخ `.dev.vars.example` إلى `.dev.vars` وضع قيمًا محلية، ثم شغّل `npm run dev`. هذا الملف مستثنى من Git.

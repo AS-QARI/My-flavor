@@ -21,6 +21,7 @@ import {
   Sparkles,
   Navigation,
   ExternalLink,
+  LogOut,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -122,6 +123,10 @@ export default function Journal() {
       type: 'success',
     });
   }
+  async function signOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.assign('/login');
+  }
   async function remove() {
     if (!selected) return;
     setDeleting(true);
@@ -161,8 +166,12 @@ export default function Journal() {
             <ThemeToggle />
             <span className="private-tag">
               <LockKeyhole size={14} />
-              مساحة تخصّك
+              محمي بتسجيل دخول
             </span>
+            <button className="sign-out-button" type="button" onClick={signOut}>
+              <LogOut size={15} />
+              خروج
+            </button>
           </div>
         </header>
         <Tabs

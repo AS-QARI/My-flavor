@@ -1,11 +1,11 @@
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getRequestUser } from '@/app/auth';
 import { database } from '@/db';
 import { googleMapsURL } from './google-maps';
 export async function identity(request: Request, write = false) {
-  const user = await getChatGPTUser();
+  const user = await getRequestUser(request);
   if (!user)
     throw new Response(
-      JSON.stringify({ error: 'انتهت الجلسة. أعد فتح التطبيق لتسجيل الدخول.' }),
+      JSON.stringify({ error: 'انتهت جلسة الدخول. سجّل الدخول مرة أخرى.' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } },
     );
   if (write) {
