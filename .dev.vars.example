@@ -1,4 +1,0 @@
-# انسخ هذا الملف باسم .dev.vars وضع قيمك المحلية. لا ترفعه إلى Git.
-ADMIN_USERNAME=your-username
-ADMIN_PASSWORD=your-password
-SESSION_SECRET=replace-with-a-random-string-at-least-32-characters-long
